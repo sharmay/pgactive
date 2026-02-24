@@ -16,9 +16,9 @@ This troubleshooting guide addresses common issues, configuration errors, and op
 * Error: Connection timeouts or "could not connect to server"
 * Cause: Network connectivity issues between the instances.
 * Fix:
-* Ensure all instances allow inbound traffic on port `5432` from the *other* instance's.
-* Ensure all instances are setup with correct authentication.
-* Verification: Try creating a standard `postgres_fdw` connection manually between nodes to verify network reachability before using pgactive functions.
+1. Ensure all instances allow inbound traffic on port `5432` from the *other* instance's.
+2. Ensure all instances are setup with correct authentication.
+3. Verification: Try creating a standard `postgres_fdw` connection manually between nodes to verify network reachability before using pgactive functions.
 
 ### 2. Replication Issues
 
@@ -51,7 +51,7 @@ FROM pg_stat_subscription;
 
 ### 3. Conflict Resolution
 
-`pgactive` uses a Last-Write-Wins strategy based on commit timestamps. If two nodes update the same row at the same time, the later timestamp overwrites the earlier one.
+`pgactive` uses a Last-Write-Wins strategy based on commit timestamps. If two nodes update the same row (primary/identity key) at the same time, the later timestamp overwrites the earlier one.
 
 #### How to View Conflicts
 
