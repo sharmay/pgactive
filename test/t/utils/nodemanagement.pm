@@ -505,6 +505,7 @@ sub pgactive_detach_nodes {
     $upstream_node->safe_psql( $pgactive_test_dbname,
         "SELECT pgactive.pgactive_detach_nodes($nodelist)" );
 
+    sleep(5);
     # We can tell a detach has taken effect when the downstream's slot vanishes
     # on the upstream.
     for my $detach_node (@{$pgactive_detach_nodes}) {
@@ -558,6 +559,7 @@ sub check_detach_status {
             qq($detach_node_name status on local node after detach is 'k' or 'r')
         );
 
+        sleep(5);
         # The downstream's slot on the upstream MUST be gone
         is(
             $upstream_node->safe_psql($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE active and node_name = '$detach_node_name')]),

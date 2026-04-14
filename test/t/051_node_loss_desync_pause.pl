@@ -14,6 +14,7 @@ use Cwd;
 use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
+use Time::HiRes qw(usleep);
 use threads;
 use Test::More;
 use utils::nodemanagement;
@@ -46,8 +47,10 @@ $node_2->safe_psql($pgactive_test_dbname,qq(INSERT INTO $test_table VALUES($valu
 
 # Check changes from node_2 are replayed on node_1 and not on node_0
 wait_for_apply($node_2,$node_1);
+sleep(1);
 is($node_1->safe_psql($pgactive_test_dbname,"SELECT id FROM $test_table"),
     $value,"Changes replayed to node_1");
+sleep(1);
 is($node_0->safe_psql($pgactive_test_dbname,"SELECT id FROM $test_table"),
     '',"Changes not replayed to node_0 due to apply pause");
 

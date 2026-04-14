@@ -135,6 +135,7 @@ typedef struct
 	int64		cache;			/* cache size */
 	int64		last_value;		/* last value of sequence */
 	bool		is_called;		/* whether nextval advances before returning */
+	bool		null_seqtuple;	/* did pg_get_sequence_data return nulls? */
 } SequenceItem;
 
 typedef enum OidOptions
@@ -824,23 +825,30 @@ main(int argc, char **argv)
 
 	/* reject conflicting "-only" options */
 	if (data_only && schema_only)
-		pg_fatal("options -s/--schema-only and -a/--data-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "-a/--data-only");
 	if (schema_only && statistics_only)
-		pg_fatal("options -s/--schema-only and --statistics-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--statistics-only");
 	if (data_only && statistics_only)
-		pg_fatal("options -a/--data-only and --statistics-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-a/--data-only", "--statistics-only");
 
 	/* reject conflicting "-only" and "no-" options */
 	if (data_only && no_data)
-		pg_fatal("options -a/--data-only and --no-data cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-a/--data-only", "--no-data");
 	if (schema_only && no_schema)
-		pg_fatal("options -s/--schema-only and --no-schema cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--no-schema");
 	if (statistics_only && no_statistics)
-		pg_fatal("options --statistics-only and --no-statistics cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics-only", "--no-statistics");
 
 	/* reject conflicting "no-" options */
 	if (with_statistics && no_statistics)
-		pg_fatal("options --statistics and --no-statistics cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics", "--no-statistics");
 
 	/* reject conflicting "-only" options */
 	if (data_only && with_statistics)
@@ -851,16 +859,20 @@ main(int argc, char **argv)
 				 "-s/--schema-only", "--statistics");
 
 	if (schema_only && foreign_servers_include_patterns.head != NULL)
-		pg_fatal("options -s/--schema-only and --include-foreign-data cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--include-foreign-data");
 
 	if (numWorkers > 1 && foreign_servers_include_patterns.head != NULL)
-		pg_fatal("option --include-foreign-data is not supported with parallel backup");
+		pg_fatal("option %s is not supported with parallel backup",
+				 "--include-foreign-data");
 
 	if (data_only && dopt.outputClean)
-		pg_fatal("options -c/--clean and -a/--data-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-c/--clean", "-a/--data-only");
 
 	if (dopt.if_exists && !dopt.outputClean)
-		pg_fatal("option --if-exists requires option -c/--clean");
+		pg_fatal("option %s requires option %s",
+				 "--if-exists", "-c/--clean");
 
 	/*
 	 * Set derivative flags. Ambiguous or nonsensical combinations, e.g.
@@ -880,7 +892,9 @@ main(int argc, char **argv)
 	 * --rows-per-insert were specified.
 	 */
 	if (dopt.do_nothing && dopt.dump_inserts == 0)
-		pg_fatal("option --on-conflict-do-nothing requires option --inserts, --rows-per-insert, or --column-inserts");
+		pg_fatal("option %s requires option %s, %s, or %s",
+				 "--on-conflict-do-nothing",
+				 "--inserts", "--rows-per-insert", "--column-inserts");
 
 	/* Identify archive format to emit */
 	archiveFormat = parseArchiveFormat(format, &archiveMode);
@@ -901,7 +915,8 @@ main(int argc, char **argv)
 			pg_fatal("invalid restrict key");
 	}
 	else if (dopt.restrict_key)
-		pg_fatal("option --restrict-key can only be used with --format=plain");
+		pg_fatal("option %s can only be used with %s",
+				 "--restrict-key", "--format=plain");
 
 	/*
 	 * Custom and directory formats are compressed by default with gzip when
@@ -5219,15 +5234,15 @@ getSubscriptionTables(Archive *fout)
 		subrinfo[i].dobj.catId.tableoid = relid;
 		subrinfo[i].dobj.catId.oid = cur_srsubid;
 		AssignDumpId(&subrinfo[i].dobj);
-		subrinfo[i].dobj.name = pg_strdup(subinfo->dobj.name);
+		subrinfo[i].dobj.namespace = tblinfo->dobj.namespace;
+		subrinfo[i].dobj.name = tblinfo->dobj.name;
+		subrinfo[i].subinfo = subinfo;
 		subrinfo[i].tblinfo = tblinfo;
 		subrinfo[i].srsubstate = PQgetvalue(res, i, i_srsubstate)[0];
 		if (PQgetisnull(res, i, i_srsublsn))
 			subrinfo[i].srsublsn = NULL;
 		else
 			subrinfo[i].srsublsn = pg_strdup(PQgetvalue(res, i, i_srsublsn));
-
-		subrinfo[i].subinfo = subinfo;
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(subrinfo[i].dobj), fout);
@@ -5256,7 +5271,7 @@ dumpSubscriptionTable(Archive *fout, const SubRelInfo *subrinfo)
 
 	Assert(fout->dopt->binary_upgrade && fout->remoteVersion >= 170000);
 
-	tag = psprintf("%s %s", subinfo->dobj.name, subrinfo->dobj.name);
+	tag = psprintf("%s %s", subinfo->dobj.name, subrinfo->tblinfo->dobj.name);
 
 	query = createPQExpBuffer();
 
@@ -5271,7 +5286,7 @@ dumpSubscriptionTable(Archive *fout, const SubRelInfo *subrinfo)
 							 "\n-- For binary upgrade, must preserve the subscriber table.\n");
 		appendPQExpBufferStr(query,
 							 "SELECT pg_catalog.binary_upgrade_add_sub_rel_state(");
-		appendStringLiteralAH(query, subrinfo->dobj.name, fout);
+		appendStringLiteralAH(query, subinfo->dobj.name, fout);
 		appendPQExpBuffer(query,
 						  ", %u, '%c'",
 						  subrinfo->tblinfo->dobj.catId.oid,
@@ -9180,8 +9195,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	 *
 	 * We track in notnull_islocal whether the constraint was defined directly
 	 * in this table or via an ancestor, for binary upgrade.  flagInhAttrs
-	 * might modify this later; that routine is also in charge of determining
-	 * the correct inhcount.
+	 * might modify this later.
 	 */
 	if (fout->remoteVersion >= 180000)
 		appendPQExpBufferStr(q,
@@ -9198,7 +9212,10 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 							 "NULL AS notnull_comment,\n"
 							 "NULL AS notnull_invalidoid,\n"
 							 "false AS notnull_noinherit,\n"
-							 "a.attislocal AS notnull_islocal,\n");
+							 "CASE WHEN a.attislocal THEN true\n"
+							 "     WHEN a.attnotnull AND NOT a.attislocal THEN true\n"
+							 "     ELSE false\n"
+							 "END AS notnull_islocal,\n");
 
 	if (fout->remoteVersion >= 140000)
 		appendPQExpBufferStr(q,
@@ -9900,7 +9917,7 @@ determineNotNullFlags(Archive *fout, PGresult *res, int r,
 			 */
 			if ((dopt->binary_upgrade &&
 				 !tbinfo->ispartition &&
-				 !tbinfo->notnull_islocal) ||
+				 !tbinfo->notnull_islocal[j]) ||
 				!PQgetisnull(res, r, i_notnull_comment))
 			{
 				tbinfo->notnull_constrs[j] =
@@ -16604,7 +16621,7 @@ collectSecLabels(Archive *fout)
 
 	appendPQExpBufferStr(query,
 						 "SELECT label, provider, classoid, objoid, objsubid "
-						 "FROM pg_catalog.pg_seclabel "
+						 "FROM pg_catalog.pg_seclabels "
 						 "ORDER BY classoid, objoid, objsubid");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
@@ -17216,6 +17233,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						appendPQExpBuffer(q, "CONSTRAINT %s NOT NULL %s",
 										  tbinfo->notnull_constrs[j],
 										  fmtId(tbinfo->attnames[j]));
+
+					if (tbinfo->notnull_noinh[j])
+						appendPQExpBufferStr(q, " NO INHERIT");
 				}
 			}
 
@@ -18666,7 +18686,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 				dumpComment(fout, conprefix->data, qtypname,
 							tyinfo->dobj.namespace->dobj.name,
 							tyinfo->rolname,
-							coninfo->dobj.catId, 0, tyinfo->dobj.dumpId);
+							coninfo->dobj.catId, 0, coninfo->dobj.dumpId);
 				destroyPQExpBuffer(conprefix);
 				free(qtypname);
 			}
@@ -18801,6 +18821,7 @@ collectSequences(Archive *fout)
 		sequences[i].cycled = (strcmp(PQgetvalue(res, i, 7), "t") == 0);
 		sequences[i].last_value = strtoi64(PQgetvalue(res, i, 8), NULL, 10);
 		sequences[i].is_called = (strcmp(PQgetvalue(res, i, 9), "t") == 0);
+		sequences[i].null_seqtuple = (PQgetisnull(res, i, 8) || PQgetisnull(res, i, 9));
 	}
 
 	PQclear(res);
@@ -19070,7 +19091,13 @@ dumpSequenceData(Archive *fout, const TableDataInfo *tdinfo)
 	TableInfo  *tbinfo = tdinfo->tdtable;
 	int64		last;
 	bool		called;
-	PQExpBuffer query = createPQExpBuffer();
+	PQExpBuffer query;
+
+	/* needn't bother if not dumping sequence data */
+	if (!fout->dopt->dumpData && !fout->dopt->sequence_data)
+		return;
+
+	query = createPQExpBuffer();
 
 	/*
 	 * For versions >= 18, the sequence information is gathered in the sorted
@@ -19112,6 +19139,12 @@ dumpSequenceData(Archive *fout, const TableDataInfo *tdinfo)
 		key.oid = tbinfo->dobj.catId.oid;
 		entry = bsearch(&key, sequences, nsequences,
 						sizeof(SequenceItem), SequenceItemCmp);
+
+		if (entry->null_seqtuple)
+			pg_fatal("failed to get data for sequence \"%s\"; user may lack "
+					 "SELECT privilege on the sequence or the sequence may "
+					 "have been concurrently dropped",
+					 tbinfo->dobj.name);
 
 		last = entry->last_value;
 		called = entry->is_called;
@@ -19342,6 +19375,11 @@ dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo)
 		dumpComment(fout, "EVENT TRIGGER", qevtname,
 					NULL, evtinfo->evtowner,
 					evtinfo->dobj.catId, 0, evtinfo->dobj.dumpId);
+
+	if (evtinfo->dobj.dump & DUMP_COMPONENT_SECLABEL)
+		dumpSecLabel(fout, "EVENT TRIGGER", qevtname,
+					 NULL, evtinfo->evtowner,
+					 evtinfo->dobj.catId, 0, evtinfo->dobj.dumpId);
 
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
