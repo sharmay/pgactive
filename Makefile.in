@@ -19,6 +19,7 @@ EXTRA_CLEAN = src/pgactive_init_copy$(X) src/pgactive_init_copy.o include/pgacti
 	test/regression.diffs test/regression.out \
 	pgactive_init_copy_postgres.log home tmp_test_* \
 	pgactive_dump$(X) $(pgactive_DUMP_OBJS) \
+	src/*.o src/compat/*/pg_dump/*.o
 
 # When in development add -Werror.
 PG_CPPFLAGS = -I$(srcdir)/include -I$(srcdir)/src/$(pgactive_PGVERCOMPAT_INCDIR) -I$(libpq_srcdir) -Wall -Wmissing-prototypes -Wmissing-declarations $(EXTRA_CFLAGS)
