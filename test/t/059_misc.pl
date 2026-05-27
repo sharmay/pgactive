@@ -17,6 +17,10 @@ use utils::nodemanagement;
 my $nodes = make_pgactive_group(2,'node_');
 my ($node_0,$node_1) = @$nodes;
 
+my $my_count = $node_0->safe_psql($pgactive_test_dbname,
+    q[SELECT COUNT(*) FROM information_schema.role_routine_grants WHERE grantee = 'PUBLIC' and routine_schema = 'pgactive' and routine_name ilike '%private%';]);
+is($my_count, 0, 'Check that we are not exposing private functions to PUBLIC');
+
 $node_0->safe_psql($pgactive_test_dbname,
     q[CREATE TABLE fruits(id integer PRIMARY KEY, name varchar);]);
 $node_0->safe_psql($pgactive_test_dbname,

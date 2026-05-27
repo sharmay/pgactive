@@ -208,9 +208,10 @@ get_connect_string(const char *usermappinginfo)
 	const PQconninfoOption *options = NULL;
 	char	   *umname = NULL;
 	char	   *fsname = NULL;
-	StringInfoData cmd;
 	Oid			umuser;
 	PQconninfoOption *opts = NULL;
+	Oid argtypes[] = { TEXTOID, TEXTOID };
+	Datum args[2];
 
 	/*
 	 * First check if it's a valid connection string, if yes, do nothing
@@ -247,18 +248,16 @@ get_connect_string(const char *usermappinginfo)
 		StartTransactionCommand();
 	}
 
-	initStringInfo(&cmd);
-	appendStringInfo(&cmd, "SELECT pfs.srvname FROM pg_catalog.pg_foreign_server pfs "
-					 "JOIN pg_catalog.pg_foreign_data_wrapper pfdw ON pfdw.oid = pfs.srvfdw "
-					 "WHERE pfdw.fdwname ='pgactive_fdw' AND pfs.srvname = '%s';",
-					 fsname);
-
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 	PushActiveSnapshot(GetTransactionSnapshot());
 
-	if (SPI_execute(cmd.data, false, 0) != SPI_OK_SELECT)
-		elog(ERROR, "SPI_execute failed: %s", cmd.data);
+	args[0] = PointerGetDatum(cstring_to_text(fsname));
+	if (SPI_execute_with_args("SELECT pfs.srvname FROM pg_catalog.pg_foreign_server pfs "
+					"JOIN pg_catalog.pg_foreign_data_wrapper pfdw ON pfdw.oid = pfs.srvfdw "
+					"WHERE pfdw.fdwname ='pgactive_fdw' AND pfs.srvname = $1;",
+					1, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
+		elog(ERROR, "SPI_execute_with_args failed to query FDW");
 
 	if (SPI_processed != 1 || SPI_tuptable->tupdesc->natts != 1)
 	{
@@ -270,25 +269,21 @@ get_connect_string(const char *usermappinginfo)
 		elog(ERROR, "SPI_finish failed");
 	PopActiveSnapshot();
 
-	resetStringInfo(&cmd);
-	appendStringInfo(&cmd, "SELECT umuser FROM pg_catalog.pg_user_mappings "
-					 "WHERE usename = '%s' AND srvname = '%s';",
-					 umname, fsname);
-
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 	PushActiveSnapshot(GetTransactionSnapshot());
 
-	if (SPI_execute(cmd.data, false, 0) != SPI_OK_SELECT)
-		elog(ERROR, "SPI_execute failed: %s", cmd.data);
+	args[0] = PointerGetDatum(cstring_to_text(umname));
+	args[1] = PointerGetDatum(cstring_to_text(fsname));
+	if (SPI_execute_with_args("SELECT umuser FROM pg_catalog.pg_user_mappings WHERE usename = $1 AND srvname = $2;",
+			2, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
+		elog(ERROR, "SPI_execute_with_args failed to query pg_user_mappings for given mapping and fdw");
 
 	if (SPI_processed != 1 || SPI_tuptable->tupdesc->natts != 1)
 	{
 		elog(ERROR, "could not fetch umuser from pg_catalog.pg_user_mappings: got %d rows and %d columns, expected 1 row and 1 column",
 			 (int) SPI_processed, SPI_tuptable->tupdesc->natts);
 	}
-
-	pfree(cmd.data);
 
 	umuser = DatumGetObjectId(
 							  DirectFunctionCall1(oidin,

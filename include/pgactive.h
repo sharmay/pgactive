@@ -103,6 +103,8 @@
 
 #define pgactive_SUPERVISOR_DBNAME "pgactive_supervisordb"
 
+#define pgactive_SCHEMA_NAME "pgactive"
+
 #define pgactive_LOGICAL_MSG_PREFIX "pgactive"
 
 #define pgactive_SECLABEL_PROVIDER "pgactive"
