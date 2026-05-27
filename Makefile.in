@@ -19,6 +19,7 @@ EXTRA_CLEAN = src/pgactive_init_copy$(X) src/pgactive_init_copy.o include/pgacti
 	test/regression.diffs test/regression.out \
 	pgactive_init_copy_postgres.log home tmp_test_* \
 	pgactive_dump$(X) $(pgactive_DUMP_OBJS) \
+	src/*.o src/compat/*/pg_dump/*.o
 
 # When in development add -Werror.
 PG_CPPFLAGS = -I$(srcdir)/include -I$(srcdir)/src/$(pgactive_PGVERCOMPAT_INCDIR) -I$(libpq_srcdir) -Wall -Wmissing-prototypes -Wmissing-declarations $(EXTRA_CFLAGS)
@@ -149,13 +150,13 @@ pgactive_DUMP_OBJS = $(pgactive_DUMP_DIR)/pg_dump.o \
 	$(pgactive_DUMP_DIR)/dumputils.o \
 	$(pgactive_DUMP_DIR)/compress_io.o
 
-ifeq ($(shell test $(MAJORVERSION) -ge 18; echo $$?),0)
-	pgactive_DUMP_OBJS += $(pgactive_DUMP_DIR)/connectdb.o
-endif
-
 PG_CONFIG_LIBS = $(shell $(PG_CONFIG) --libs) 
 
 pgactive_DUMP_LIBS = $(PG_CONFIG_LIBS) -lpgfeutils
+
+ifeq ($(shell test $(MAJORVERSION) -ge 18; echo $$?),0)
+	pgactive_DUMP_OBJS += $(pgactive_DUMP_DIR)/connectdb.o
+endif
 
 ifneq ($(wildcard $(pgactive_DUMP_DIR)/compress_lz4.c),)
 	pgactive_DUMP_OBJS += $(pgactive_DUMP_DIR)/compress_lz4.o
@@ -171,6 +172,7 @@ endif
 
 ifneq ($(wildcard $(pgactive_DUMP_DIR)/compress_zstd.c),)
 	pgactive_DUMP_OBJS += $(pgactive_DUMP_DIR)/compress_zstd.o
+	pgactive_DUMP_LIBS += -lzstd
 endif
 
 ifneq ($(wildcard $(pgactive_DUMP_DIR)/filter.c),)
