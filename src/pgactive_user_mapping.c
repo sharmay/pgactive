@@ -210,8 +210,8 @@ get_connect_string(const char *usermappinginfo)
 	char	   *fsname = NULL;
 	Oid			umuser;
 	PQconninfoOption *opts = NULL;
-	Oid argtypes[] = { TEXTOID, TEXTOID };
-	Datum args[2];
+	Oid			argtypes[] = {TEXTOID, TEXTOID};
+	Datum		args[2];
 
 	/*
 	 * First check if it's a valid connection string, if yes, do nothing
@@ -254,9 +254,9 @@ get_connect_string(const char *usermappinginfo)
 
 	args[0] = PointerGetDatum(cstring_to_text(fsname));
 	if (SPI_execute_with_args("SELECT pfs.srvname FROM pg_catalog.pg_foreign_server pfs "
-					"JOIN pg_catalog.pg_foreign_data_wrapper pfdw ON pfdw.oid = pfs.srvfdw "
-					"WHERE pfdw.fdwname ='pgactive_fdw' AND pfs.srvname = $1;",
-					1, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
+							  "JOIN pg_catalog.pg_foreign_data_wrapper pfdw ON pfdw.oid = pfs.srvfdw "
+							  "WHERE pfdw.fdwname ='pgactive_fdw' AND pfs.srvname = $1;",
+							  1, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
 		elog(ERROR, "SPI_execute_with_args failed to query FDW");
 
 	if (SPI_processed != 1 || SPI_tuptable->tupdesc->natts != 1)
@@ -276,7 +276,7 @@ get_connect_string(const char *usermappinginfo)
 	args[0] = PointerGetDatum(cstring_to_text(umname));
 	args[1] = PointerGetDatum(cstring_to_text(fsname));
 	if (SPI_execute_with_args("SELECT umuser FROM pg_catalog.pg_user_mappings WHERE usename = $1 AND srvname = $2;",
-			2, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
+							  2, argtypes, args, NULL, true, 1) != SPI_OK_SELECT)
 		elog(ERROR, "SPI_execute_with_args failed to query pg_user_mappings for given mapping and fdw");
 
 	if (SPI_processed != 1 || SPI_tuptable->tupdesc->natts != 1)

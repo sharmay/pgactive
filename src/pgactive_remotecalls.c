@@ -590,7 +590,7 @@ pgactive_node_name_present(PG_FUNCTION_ARGS)
 	}
 
 	res = PQexecParams(conn, "select count(1) from pgactive.pgactive_nodes where node_name = $1 and node_status != 'k'",
-			1, NULL, paramValues, NULL, NULL, 0);
+					   1, NULL, paramValues, NULL, NULL, 0);
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
