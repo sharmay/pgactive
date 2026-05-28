@@ -128,7 +128,7 @@ $node_a->poll_query_until($pgactive_test_dbname, q{
 SELECT EXISTS (
   SELECT 1 FROM pg_class c INNER JOIN pg_namespace n ON n.nspname = 'public' AND c.relname = 'reptest'
 );
-});
+}) or die "Timed out waiting for reptest table to replicate to node_a";
 
 ok($node_b->safe_psql($pgactive_test_dbname, "SELECT 'reptest'::regclass"), "reptest table creation replicated");
 
@@ -138,7 +138,7 @@ $node_b->poll_query_until($pgactive_test_dbname, q{
 SELECT EXISTS (
   SELECT 1 FROM reptest
 );
-});
+}) or die "Timed out waiting for reptest insert to replicate to node_b";
 
 is($node_b->safe_psql($pgactive_test_dbname, 'SELECT id, dummy FROM reptest;'), '1|42', "reptest insert successfully replicated");
 

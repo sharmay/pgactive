@@ -8,7 +8,6 @@ use Cwd;
 use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
-use Time::HiRes qw(usleep);
 use IPC::Run;
 use Test::More;
 use utils::nodemanagement;
@@ -40,27 +39,33 @@ $node_0->safe_psql($pgactive_test_dbname,
 
 # Let the killed pgactive workers come up
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'apply';]);
+  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'apply';])
+  or die "Timed out waiting for apply worker to restart on node_0";
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'walsender';]);
+  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'walsender';])
+  or die "Timed out waiting for walsender worker to restart on node_0";
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'per-db';]);
+  qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'per-db';])
+  or die "Timed out waiting for per-db worker to restart on node_0";
 
 $node_0->safe_psql($pgactive_test_dbname,
     q[INSERT INTO fruits VALUES (2, 'Apple');]);
 wait_for_apply($node_0, $node_1);
 
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT COUNT(*) = 2 FROM fruits;]);
+  qq[SELECT COUNT(*) = 2 FROM fruits;])
+  or die "Timed out waiting for fruits count = 2 on node_0";
 
 # Test the capability to set all pgactive nodes read-only
 # Set all nodes read-only
 $node_0->safe_psql($pgactive_test_dbname,
   qq[SELECT pgactive.pgactive_set_node_read_only(node_name, true) FROM pgactive.pgactive_nodes;]);
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT node_read_only IS true FROM pgactive.pgactive_nodes WHERE node_name = 'node_0';]);
+  qq[SELECT node_read_only IS true FROM pgactive.pgactive_nodes WHERE node_name = 'node_0';])
+  or die "Timed out waiting for node_0 to become read-only";
 $node_1->poll_query_until($pgactive_test_dbname,
-  qq[SELECT node_read_only IS true FROM pgactive.pgactive_nodes WHERE node_name = 'node_1';]);
+  qq[SELECT node_read_only IS true FROM pgactive.pgactive_nodes WHERE node_name = 'node_1';])
+  or die "Timed out waiting for node_1 to become read-only";
 
 my $query = qq[CREATE TABLE readonly_test_shoulderror(a int);];
 my ($result, $stdout, $stderr) = ('','', '');
@@ -122,15 +127,18 @@ is($result, 'finished', 'check if commands on temporary tables works even when n
 $node_0->safe_psql($pgactive_test_dbname,
   qq[SELECT pgactive.pgactive_set_node_read_only(node_name, false) FROM pgactive.pgactive_nodes;]);
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT node_read_only IS false FROM pgactive.pgactive_nodes WHERE node_name = 'node_0';]);
+  qq[SELECT node_read_only IS false FROM pgactive.pgactive_nodes WHERE node_name = 'node_0';])
+  or die "Timed out waiting for node_0 to become read-write";
 $node_1->poll_query_until($pgactive_test_dbname,
-  qq[SELECT node_read_only IS false FROM pgactive.pgactive_nodes WHERE node_name = 'node_1';]);
+  qq[SELECT node_read_only IS false FROM pgactive.pgactive_nodes WHERE node_name = 'node_1';])
+  or die "Timed out waiting for node_1 to become read-write";
 
 $node_0->safe_psql($pgactive_test_dbname, q[DELETE FROM fruits;]);
 wait_for_apply($node_0, $node_1);
 
 $node_0->poll_query_until($pgactive_test_dbname,
-  qq[SELECT COUNT(*) = 0 FROM fruits;]);
+  qq[SELECT COUNT(*) = 0 FROM fruits;])
+  or die "Timed out waiting for fruits to be deleted on node_0";
 
 # The DB name pgactive_supervisordb is reserved by pgactive. None of these
 # commands may be permitted.
@@ -403,36 +411,45 @@ is($node_3_res, $expected, "pgactive node node_3 has all the data");
 note "Add new fruit to node-2";
 $node_2->safe_psql($pgactive_test_dbname,
     q[INSERT INTO fruits VALUES (10, 'KIWI');]);
+wait_for_apply($node_2, $node_3);
 note "Set RIF for fruits table on node-3";
 $node_3->safe_psql($pgactive_test_dbname,
     q[ALTER TABLE fruits REPLICA IDENTITY FULL;]);
 note "Update id=10 to Kiwi on node-3";
 $node_3->safe_psql($pgactive_test_dbname,
     q[UPDATE fruits set name ='Kiwi' WHERE id = 10;]);
-note "Query node 3";
+note "Update id=10 to KiwiKiwi on node-3";
 $node_3->safe_psql($pgactive_test_dbname,
     q[UPDATE fruits set name ='KiwiKiwi' WHERE id = 10;]);
+wait_for_apply($node_3, $node_2);
 note "Query node 2";
-$node_2->safe_psql($pgactive_test_dbname,
-    q[SELECT count(*) = 1 FROM fruits WHERE id=10 AND name = 'Kiwi';]);
+$node_2->poll_query_until($pgactive_test_dbname,
+    q[SELECT count(*) = 1 FROM fruits WHERE id=10;])
+    or die "Timed out waiting for node_2 to receive insert from node_3";
 note "Update id=10 to KiwiKiwi on node-2";
 $node_2->safe_psql($pgactive_test_dbname,
     q[UPDATE fruits set name ='KiwiKiwi' WHERE id = 10;]);
+wait_for_apply($node_2, $node_3);
 note "Query node-2";
-$node_2->safe_psql($pgactive_test_dbname,
-    q[SELECT count(*) = 1 FROM fruits WHERE id=10 AND name = 'KiwiKiwi';]);
-note "Query node-2";
-$node_3->safe_psql($pgactive_test_dbname,
-    q[SELECT count(*) = 1 FROM fruits WHERE id=10 AND name = 'KiwiKiwi';]);
+$node_2->poll_query_until($pgactive_test_dbname,
+    q[SELECT count(*) = 1 FROM fruits WHERE id=10 AND name = 'KiwiKiwi';])
+    or die "Timed out waiting for node_2 to see KiwiKiwi";
+note "Query node-3";
+$node_3->poll_query_until($pgactive_test_dbname,
+    q[SELECT count(*) = 1 FROM fruits WHERE id=10 AND name = 'KiwiKiwi';])
+    or die "Timed out waiting for node_3 to see KiwiKiwi";
 note "Delete id=10 on node-2";
 $node_2->safe_psql($pgactive_test_dbname,
     q[DELETE FROM fruits WHERE id = 10;]);
+wait_for_apply($node_2, $node_3);
 note "Query node-2";
-$node_2->safe_psql($pgactive_test_dbname,
-    q[SELECT count(*) = 0 FROM fruits WHERE id=10;]);
+$node_2->poll_query_until($pgactive_test_dbname,
+    q[SELECT count(*) = 0 FROM fruits WHERE id=10;])
+    or die "Timed out waiting for delete on node_2";
 note "Query node-3";
-$node_3->safe_psql($pgactive_test_dbname,
-    q[SELECT count(*) = 0 FROM fruits WHERE id=10;]);
+$node_3->poll_query_until($pgactive_test_dbname,
+    q[SELECT count(*) = 0 FROM fruits WHERE id=10;])
+    or die "Timed out waiting for delete to replicate to node_3";
 
 $node_2->stop;
 $node_3->stop;

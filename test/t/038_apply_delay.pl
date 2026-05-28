@@ -128,7 +128,8 @@ foreach my $node (@{$nodes})
 foreach my $node (@{$nodes})
 {
     $node->poll_query_until($pgactive_test_dbname,
-        qq{SELECT COUNT(*) = 1 FROM pgactive.pgactive_conflict_history WHERE conflict_type = 'delete_delete';});
+        qq{SELECT COUNT(*) = 1 FROM pgactive.pgactive_conflict_history WHERE conflict_type = 'delete_delete';})
+        or die "Timed out waiting for delete/delete conflict on " . $node->name;
 }
 
 # now, check the expected delete/delete conflict

@@ -10,11 +10,11 @@ use Exporter;
 use Cwd;
 use Config;
 use Carp qw(cluck);
+use Time::HiRes;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 use IPC::Run;
-use Time::HiRes qw(usleep);
 use vars qw($pgactive_test_dbname);
 
 use Carp 'verbose';
@@ -460,17 +460,17 @@ sub check_join_status {
     my $unid = $upstream_node->safe_psql($pgactive_test_dbname,
                 qq[SELECT pgactive.pgactive_get_node_identifier();]);
 
-    # The join target must have an active connection to the new node
-    is(
-        $join_node->safe_psql($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = 'pgactive:$unid:send')]),
-        't',
+    # The join target must have an active connection to the new node.
+    # Use poll_query_until because the walsender connection may not yet be
+    # visible in pg_stat_activity immediately after pgactive_wait_for_node_ready.
+    ok(
+        $join_node->poll_query_until($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = 'pgactive:$unid:send')]),
         qq(replication connection for $upstream_node_name on $join_node_name is present)
     );
 
     # The new node must have an active connection to the join target
-    is(
-        $upstream_node->safe_psql($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = 'pgactive:$jnid:send')]),
-        't',
+    ok(
+        $upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = 'pgactive:$jnid:send')]),
         qq(replication connection for $join_node_name on $upstream_node_name is present)
     );
 }
@@ -479,9 +479,8 @@ sub wait_detach_completion {
     my ($detach_node, $upstream_node) = @_;
     my $detach_node_name = $detach_node->name();
 
-    if (!$upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE node_name = '$detach_node_name' and active)])) {
-        cluck("replication slot for node " . $detach_node->name . " on " . $upstream_node->name . " was not removed, trying to continue anyway");
-    }
+    ok($upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE node_name = '$detach_node_name' and active)]),
+        qq(replication slot for $detach_node_name on @{[$upstream_node->name]} removed after detach));
 }
 
 # Remove one or mote nodes from cluster using 'pgactive_detach_nodes'.
@@ -558,10 +557,10 @@ sub check_detach_status {
             qq($detach_node_name status on local node after detach is 'k' or 'r')
         );
 
-        # The downstream's slot on the upstream MUST be gone
-        is(
-            $upstream_node->safe_psql($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE active and node_name = '$detach_node_name')]),
-            'f',
+        # The downstream's slot on the upstream MUST be gone.
+        # Use poll_query_until because slot cleanup may lag behind node status change.
+        ok(
+            $upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE active and node_name = '$detach_node_name')]),
             qq(replication slot for $detach_node_name on $upstream_node_name has been removed)
         );
 
@@ -624,29 +623,25 @@ sub node_isready {
     return $?;
 }
 
-# Wait until pg_isready says a node is up or timeout (if supplied) exceeded. Returns
-# 0 on timeout, 1 on success.
+# Wait until the node is ready to accept connections by polling pg_isready.
+# Returns 0 on timeout, 1 on success.
 #
 # Threadsafe.
 sub wait_for_pg_isready {
     my ($node, $maxwait) = @_;
     $maxwait = $PostgreSQL::Test::Utils::timeout_default if !defined($maxwait);
 
-    my $waited = 0;
-    my $wait_secs = 0.5;
-    while (1) {
-        my $ret = node_isready($node);
-        last if $ret == 0;
-        sleep($wait_secs);
-        $waited += $wait_secs;
-        if ($maxwait && ($waited > $maxwait))
-        {
-            diag "gave up waiting for node " . $node->name . " to become ready after $maxwait seconds, last result was $ret";
-            return 0;
+    my $elapsed = 0;
+    while ($elapsed < $maxwait) {
+        if (node_isready($node) == 0) {
+            return 1;
         }
-    };
+        Time::HiRes::usleep(100_000);
+        $elapsed += 0.1;
+    }
 
-    return 1;
+    diag "gave up waiting for node " . $node->name . " to become ready after $maxwait seconds";
+    return 0;
 }
 
 # Print out pgactive.pgactive_nodes status info for a node
@@ -746,7 +741,8 @@ SELECT 'acquired' FROM pgactive.pgactive_acquire_global_lock('$mode');
         croak("cannot find expected query   SELECT 'acquired' FROM pgactive.pgactive_acquire_global_lock...   in pg_stat_activity\n");
     }
 
-	$node->poll_query_until($pgactive_test_dbname, q[SELECT lock_state <> 'nolock' FROM pgactive.pgactive_global_locks_info]);
+	$node->poll_query_until($pgactive_test_dbname, q[SELECT lock_state <> 'nolock' FROM pgactive.pgactive_global_locks_info])
+		or croak("Timed out waiting for DDL lock state to change from 'nolock'");
 
     my $status = $node->safe_psql($pgactive_test_dbname, q[SELECT lock_state, lock_mode, owner_is_my_node, owner_is_my_backend FROM pgactive.pgactive_global_locks_info]);
 	if (not ($status =~ qr/(?:acquire_acquired|acquire_tally_confirmations)\|$mode\|t\|f/))
@@ -817,22 +813,15 @@ sub get_log_size
 	return (stat $node->logfile)[7];
 }
 
-# Find $pat in logfile of $node after $off-th byte
+# Find $pat in logfile of $node after $off-th byte.
+# Uses $node->wait_for_log which polls every 100ms up to $timeout_default.
+# Returns true if pattern found, false on timeout (does not croak).
 sub find_in_log
 {
 	my ($node, $pat, $off) = @_;
-	#my $max_attempts = $PostgreSQL::Test::Utils::timeout_default * 10;
-	my $max_attempts = 60 * 10;
-	my $log;
 
-	while ($max_attempts-- >= 0)
-	{
-		$log = PostgreSQL::Test::Utils::slurp_file($node->logfile, $off);
-		last if ($log =~ m/$pat/);
-		usleep(100_000);
-	}
-
-	return $log =~ m/$pat/;
+	my $result = eval { $node->wait_for_log($pat, $off) };
+	return defined($result);
 }
 
 sub create_pgactive_group_with_db {
