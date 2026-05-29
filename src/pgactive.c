@@ -556,6 +556,8 @@ pgactive_bgworker_init(uint32 worker_arg, pgactiveWorkerType worker_type)
 	Oid			dboid;
 	pgactiveNodeId myid;
 	char		mystatus;
+	Oid			pgactive_oid;
+	Oid			schema_oid;
 
 #if PG_VERSION_NUM < 170000
 	Assert(IsBackgroundWorker);
@@ -614,6 +616,22 @@ pgactive_bgworker_init(uint32 worker_arg, pgactiveWorkerType worker_type)
 	LWLockAcquire(pgactiveWorkerCtl->lock, LW_EXCLUSIVE);
 	pgactive_worker_slot->worker_pid = MyProcPid;
 	pgactive_worker_slot->worker_proc = MyProc;
+
+	SetCurrentStatementStartTimestamp();
+	StartTransactionCommand();
+	PushActiveSnapshot(GetTransactionSnapshot());
+	schema_oid = get_namespace_oid(pgactive_SCHEMA_NAME, true);
+	pgactive_oid = get_extension_oid("pgactive", true);
+	if (schema_oid != InvalidOid && pgactive_oid == InvalidOid)
+	{
+		elog(LOG, "pgactive schema is present but extension is not created. Cleanup and restart instance");
+		LWLockRelease(pgactiveWorkerCtl->lock);
+
+		pgactive_worker_unregister();
+		pg_unreachable();
+	}
+	PopActiveSnapshot();
+	CommitTransactionCommand();
 
 	/* Check if we decided to unregister this worker. */
 	if (!OidIsValid(find_pgactive_nid_getter_function()))
@@ -1315,7 +1333,7 @@ pgactive_maintain_schema(bool update_extensions)
 	table_close(extrel, NoLock);
 
 	/* setup initial queued_cmds OID */
-	schema_oid = get_namespace_oid("pgactive", false);
+	schema_oid = get_namespace_oid(pgactive_SCHEMA_NAME, false);
 	pgactiveSchemaOid = schema_oid;
 	pgactiveNodesRelid =
 		pgactive_lookup_relid("pgactive_nodes", schema_oid);

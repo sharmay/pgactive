@@ -70,7 +70,8 @@ TODO: {
 
 # Because we have to terminate the apply worker it can take a little while for
 # the lock to be released.
-$node_0->poll_query_until($pgactive_test_dbname, "SELECT lock_state = 'nolock' FROM pgactive.pgactive_global_locks_info");
+$node_0->poll_query_until($pgactive_test_dbname, "SELECT lock_state = 'nolock' FROM pgactive.pgactive_global_locks_info")
+    or die "Timed out waiting for DDL lock to be released on node_0 after detach";
 
 is( $node_0->safe_psql( $pgactive_test_dbname, "SELECT lock_state FROM pgactive.pgactive_global_locks_info"), 'nolock', "ddl lock released after detach");
 is( $node_0->safe_psql( $pgactive_test_dbname, "SELECT state FROM pgactive.pgactive_global_locks"), '', "pgactive.pgactive_global_locks row removed");

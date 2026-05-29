@@ -60,6 +60,10 @@ sub insert_into_table_sequence {
 sub compare_sequence_table_with_upstream {
     my ( $message, $upstream_node, @nodes ) = @_;
 
+    foreach my $node (@nodes) {
+        wait_for_apply( $node, $upstream_node );
+        wait_for_apply( $upstream_node, $node );
+    }
     my $upstream_record = $upstream_node->safe_psql( $pgactive_test_dbname, "SELECT * FROM public.test_table_sequence" );
     foreach my $node (@nodes) {
         my $node_record = $node->safe_psql( $pgactive_test_dbname, "SELECT * FROM public.test_table_sequence" );

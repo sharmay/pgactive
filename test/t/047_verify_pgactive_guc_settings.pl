@@ -193,7 +193,8 @@ $node_1->poll_query_until($pgactive_test_dbname,
   qq[SELECT COUNT(*) = 1 AS ok FROM pgactive.pgactive_get_workers_info()
         WHERE worker_type = 'apply' AND
         last_error = 'pgactive_apply_failure' AND
-        last_error_time IS NOT NULL;]);
+        last_error_time IS NOT NULL;])
+  or die "Timed out waiting for apply failure to be reported on node_1";
 
 $node_0->stop;
 $node_1->stop;
