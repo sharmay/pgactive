@@ -8,7 +8,6 @@ use Cwd;
 use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
-use Time::HiRes qw(usleep);
 use IPC::Run;
 use Test::More;
 use utils::nodemanagement;
@@ -25,38 +24,21 @@ check_detach_status([$node_0], $node_1);
 my $logstart_0 = get_log_size($node_0);
 my $logstart_1 = get_log_size($node_1);
 
-# Detached node must unregister apply worker
-my $result = find_in_log($node_0,
-	qr!LOG: ( [A-Z0-9]+:)? unregistering apply worker due to .*!,
-	$logstart_0);
-
-# Let's skip if the unregister log message is not detected. Sometimes it may
-# happen that the worker might get killed even before unregistering log message
-# is hit.
-SKIP: {
-	skip "unregistering apply worker on node_0 is not detected", 1
-	  if (!$result);
-
-	ok($result, "unregistering apply worker on node_0 is detected");
-}
+# Detached node must have no apply workers running after detach.
+# Poll worker state directly rather than relying on log messages which may
+# not appear if the worker is killed before it can log.
+ok($node_0->poll_query_until($pgactive_test_dbname,
+	qq[SELECT COUNT(*) = 0 FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'apply';]),
+	"apply worker on node_0 is gone after detach");
 
 # Remove pgactive from the detached node
 $node_0->safe_psql($pgactive_test_dbname, "select pgactive.pgactive_remove(true)");
 
-# per-db worker must be unregistered on a node with pgactive removed
-$result = find_in_log($node_0,
-	qr!LOG: ( [A-Z0-9]+:)? unregistering per-db worker due to .*!,
-	$logstart_0);
-
-# Let's skip if the unregister log message is not detected. Sometimes it may
-# happen that the worker might get killed even before unregistering log message
-# is hit.
-SKIP: {
-	skip "unregistering per-db worker on node_0 is not detected", 1
-	  if (!$result);
-
-	ok($result, "unregistering per-db worker on node_0 is detected");
-}
+# per-db worker must be gone on a node with pgactive removed.
+# Poll worker state directly rather than relying on log messages.
+ok($node_0->poll_query_until($pgactive_test_dbname,
+	qq[SELECT COUNT(*) = 0 FROM pgactive.pgactive_get_workers_info() WHERE worker_type = 'per-db';]),
+	"per-db worker on node_0 is gone after pgactive_remove");
 
 # Remove pgactive from node and immediately drop the extension
 $node_1->safe_psql($pgactive_test_dbname,
@@ -65,34 +47,11 @@ $node_1->safe_psql($pgactive_test_dbname,
 		DROP EXTENSION pgactive;
 	]);
 
-# Detached node must unregister apply worker
-$result = find_in_log($node_1,
-	qr!LOG: ( [A-Z0-9]+:)? unregistering apply worker due to .*!,
-	$logstart_1);
-
-# Let's skip if the unregister log message is not detected. Sometimes it may
-# happen that the worker might get killed even before unregistering log message
-# is hit.
-SKIP: {
-	skip "unregistering apply worker on node_1 is not detected", 1
-	  if (!$result);
-
-	ok($result, "unregistering apply worker on node_1 is detected");
-}
-
-# per-db worker must be unregistered on a node with pgactive removed
-$result = find_in_log($node_1,
-	qr!LOG: ( [A-Z0-9]+:)? unregistering per-db worker due to .*!,
-	$logstart_1);
-
-# Let's skip if the unregister log message is not detected. Sometimes it may
-# happen that the worker might get killed even before unregistering log message
-# is hit.
-SKIP: {
-	skip "unregistering per-db worker on node_1 is not detected", 1
-	  if (!$result);
-
-	ok($result, "unregistering per-db worker on node_1 is detected");
-}
+# After pgactive_remove + DROP EXTENSION, all pgactive workers must be gone.
+# Poll pg_stat_activity directly since pgactive catalog functions are no longer
+# available after DROP EXTENSION.
+ok($node_1->poll_query_until('postgres',
+	qq[SELECT COUNT(*) = 0 FROM pg_stat_activity WHERE application_name LIKE 'pgactive:%' AND datname = '$pgactive_test_dbname';]),
+	"all pgactive workers on node_1 are gone after pgactive_remove and DROP EXTENSION");
 
 done_testing();

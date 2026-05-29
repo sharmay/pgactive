@@ -573,17 +573,15 @@ pgactive_node_name_present(PG_FUNCTION_ARGS)
 	int			is_present = 0;
 	PGconn	   *conn;
 	PGresult   *res;
-	StringInfoData cmd;
+	const char *paramValues[1];
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
 	node_name = text_to_cstring(PG_GETARG_TEXT_P(0));
+	paramValues[0] = node_name;
 
 	dsn = text_to_cstring(PG_GETARG_TEXT_P(1));
-
-	initStringInfo(&cmd);
-	appendStringInfo(&cmd, "select count(1) from pgactive.pgactive_nodes where node_name = '%s' and node_status != 'k'", node_name);
 
 	conn = pgactive_connect_nonrepl(dsn, "pgactive", false, false);
 	if (PQstatus(conn) != CONNECTION_OK)
@@ -591,7 +589,8 @@ pgactive_node_name_present(PG_FUNCTION_ARGS)
 		elog(ERROR, "unable to connect to remote node node:  %s", dsn);
 	}
 
-	res = PQexec(conn, cmd.data);
+	res = PQexecParams(conn, "select count(1) from pgactive.pgactive_nodes where node_name = $1 and node_status != 'k'",
+					   1, NULL, paramValues, NULL, NULL, 0);
 
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -608,7 +607,6 @@ pgactive_node_name_present(PG_FUNCTION_ARGS)
 
 	is_present = atoi(PQgetvalue(res, 0, 0));
 
-	pfree(cmd.data);
 	PQclear(res);
 	PQfinish(conn);
 	PG_RETURN_INT32(is_present);

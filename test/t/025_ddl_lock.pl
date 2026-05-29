@@ -81,7 +81,8 @@ my $lock = start_acquire_ddl_lock($node_0, 'ddl_lock', $timer);
 # we don't acquire. (The local ddl lock is also held on the node that takes the
 # global ddl lock, but it's inserted in a row that's in an uncommitted xact so
 # we can't see it from queries; see 2ndQuadrant/pgactive-private#60)
-is($node_2->safe_psql($pgactive_test_dbname, q[SELECT state FROM pgactive.pgactive_global_locks]), 'acquired',
+# Use poll_query_until because lock propagation to peers is asynchronous.
+ok($node_2->poll_query_until($pgactive_test_dbname, q[SELECT state = 'acquired' FROM pgactive.pgactive_global_locks]),
     'local DDL lock acquired on node 2');
 # No good way to show if requesting node has replies
 # from all peers. Best we can do is see if pgactive.pgactive_acquire_global_lock(...)
@@ -98,7 +99,8 @@ ok(!wait_acquire_ddl_lock($lock, undef, 1), 'did not acquire lock');
 # After the psql session terminates, we'll send a message to peer nodes
 # to release the DDL lock acquisition attempt. This will take a while, so
 # poll here.
-$node_2->poll_query_until($pgactive_test_dbname, "SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_global_locks WHERE state = 'acquired')");
+$node_2->poll_query_until($pgactive_test_dbname, "SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_global_locks WHERE state = 'acquired')")
+    or die "Timed out waiting for DDL lock release on node_2";
 wait_for_apply($node_0, $node_2);
 wait_for_apply($node_2, $node_0);
 

@@ -1,6 +1,6 @@
 -- tests for functions and triggers
 \c postgres super
-SELECT pgactive.pgactive_replicate_ddl_command($DDL$ 
+SELECT pgactive.pgactive_replicate_ddl_command($DDL$
 CREATE FUNCTION public.test_fn(IN inpar character varying (20), INOUT inoutpar integer, OUT timestamp with time zone) RETURNS SETOF record AS
 $$
 BEGIN
@@ -8,26 +8,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE  STRICT;
 $DDL$);
+SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \df test_fn
 \c regression
 \df test_fn
 
+\c postgres super
 SELECT pgactive.pgactive_replicate_ddl_command($DDL$ ALTER FUNCTION public.test_fn(varchar, integer) SECURITY DEFINER CALLED ON NULL INPUT VOLATILE ROWS 1 COST 1; $DDL$);
+SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \df test_fn
-\c postgres
+\c regression
 \df test_fn
 
-SELECT pgactive.pgactive_replicate_ddl_command($DDL$ 
-CREATE OR REPLACE FUNCTION public.test_fn(IN inpar varchar, INOUT inoutpar integer, OUT timestamp with time zone) RETURNS SETOF record AS 
+\c postgres super
+SELECT pgactive.pgactive_replicate_ddl_command($DDL$
+CREATE OR REPLACE FUNCTION public.test_fn(IN inpar varchar, INOUT inoutpar integer, OUT timestamp with time zone) RETURNS SETOF record AS
 $$
 BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 $DDL$);
+SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \df test_fn
 \c regression
 \df test_fn
 
+\c postgres super
 SELECT pgactive.pgactive_replicate_ddl_command($DDL$ DROP FUNCTION public.test_fn(varchar, integer); $DDL$);
 \df test_fn
 \c postgres

@@ -14,7 +14,6 @@ use Cwd;
 use Config;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
-use Time::HiRes qw(usleep);
 use threads;
 use Test::More;
 use utils::nodemanagement;
@@ -47,10 +46,8 @@ $node_2->safe_psql($pgactive_test_dbname,qq(INSERT INTO $test_table VALUES($valu
 
 # Check changes from node_2 are replayed on node_1 and not on node_0
 wait_for_apply($node_2,$node_1);
-sleep(1);
 is($node_1->safe_psql($pgactive_test_dbname,"SELECT id FROM $test_table"),
     $value,"Changes replayed to node_1");
-sleep(1);
 is($node_0->safe_psql($pgactive_test_dbname,"SELECT id FROM $test_table"),
     '',"Changes not replayed to node_0 due to apply pause");
 
@@ -78,11 +75,16 @@ $result = find_in_log($node_0,
 	$logstart_0);
 ok($result, "apply has paused on node_0 for the second time");
 
-detach_and_check_nodes([$node_2],$node_1);
+# Detach node_2 while node_0 has apply paused. Slot cleanup may be delayed
+# until apply resumes, so defer check_detach_status until after resume.
+pgactive_detach_nodes([$node_2],$node_1);
 
 $node_0->safe_psql($pgactive_test_dbname,"select pgactive.pgactive_apply_resume()");
 wait_for_apply($node_0,$node_1);
 wait_for_apply($node_1,$node_0);
+
+check_detach_status([$node_2],$node_1);
+stop_nodes([$node_2]);
 
 TODO: {
     # See detailed explanation in t/050_node_loss_desync.pl

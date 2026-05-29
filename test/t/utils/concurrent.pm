@@ -58,7 +58,7 @@ sub concurrent_joins {
 sub concurrent_safe_psql {
     my ($node_queries, $timeout) = @_;
 
-    $timeout = 60 if (!$timeout);
+    $timeout = $PostgreSQL::Test::Utils::timeout_default if (!$timeout);
 
     my @handles;
     foreach my $node_query (@$node_queries) {
@@ -174,11 +174,10 @@ sub concurrent_joins_physical {
     }
 
     # wait for Pg to come up
-    my $timeout = 60;
     foreach my $join_node (@nodes) {
         my $node = @{$join_node}[0];
-        is(wait_for_pg_isready($node, $timeout),
-                1, "node " . $node->name . " came up within $timeout seconds");
+        is(wait_for_pg_isready($node, $PostgreSQL::Test::Utils::timeout_default),
+                1, "node " . $node->name . " came up within timeout");
     }
 
     # wait for pgactive to come up
@@ -372,10 +371,9 @@ sub concurrent_join_detach_physical {
     check_detach_status(\@{$pgactive_detach_nodes}, $upstream_node);
     
     # wait for Pg to come up
-    my $timeout = 60;
     foreach my $node (@{$join_nodes}) {
-        is(wait_for_pg_isready($node, $timeout),
-            1, "node " . $node->name . " came up within $timeout seconds");
+        is(wait_for_pg_isready($node, $PostgreSQL::Test::Utils::timeout_default),
+            1, "node " . $node->name . " came up within timeout");
     }
 
     # wait for pgactive to come up
@@ -437,11 +435,10 @@ sub concurrent_joins_logical_physical {
     }
 
     # wait for Pg to come up
-    my $timeout = 60;
     foreach my $join_node (@{$join_nodes_physical}) {
         my $node = @{$join_node}[0];
-        is(wait_for_pg_isready($node, $timeout),
-            1, "node " . $node->name . " came up within $timeout seconds");
+        is(wait_for_pg_isready($node, $PostgreSQL::Test::Utils::timeout_default),
+            1, "node " . $node->name . " came up within timeout");
     }
     
     my @join_nodes;

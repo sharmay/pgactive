@@ -14,9 +14,10 @@ BINDIR=$(@PG_CONFIG@ --bindir)
 REGRESS_BASE=$(@PG_CONFIG@ --pkglibdir)/pgxs/
 DBNAME=regression
 
-rm -rf @srcdir@/test/tmp_check
-mkdir -p @srcdir@/test/tmp_check
-mkdir @srcdir@/test/tmp_check/data
+rm -rf @abs_srcdir@/test/tmp_check
+mkdir -p @abs_srcdir@/test/tmp_check
+mkdir @abs_srcdir@/test/tmp_check/data
+mkdir -p @abs_srcdir@/test/results/ddl @abs_srcdir@/test/results/ddl_fn @abs_srcdir@/test/results/dml
 
 set +e
 for getoptbin in $(which getopt) /usr/bin/getopt /usr/local/bin/getopt ; do
@@ -58,7 +59,8 @@ while true ; do
     esac
 done
 
-SOCKET=$(pwd)/test/tmp_check
+TMPDIR=@abs_srcdir@/test/tmp_check
+SOCKET=$TMPDIR
 PORT=5440
 OPTIONS="-c config_file=${CONFIGFILE}"
 OPTIONS="$OPTIONS -c unix_socket_directories=$SOCKET"
@@ -69,13 +71,13 @@ export PGHOST=$SOCKET
 export PGPORT=$PORT
 
 # create new data directory
-$BINDIR/initdb --nosync test/tmp_check/data > test/tmp_check/initdb.log 2>&1
+$BINDIR/initdb --nosync $TMPDIR/data > $TMPDIR/initdb.log 2>&1
 
 # install trap to shutdown server at failure/exit
-trap "$BINDIR/pg_ctl stop -w -D test/tmp_check/data" INT QUIT TERM EXIT
+trap "$BINDIR/pg_ctl stop -w -D $TMPDIR/data" INT QUIT TERM EXIT
 
 #start server
-$BINDIR/pg_ctl start -w -D test/tmp_check/data -o "$OPTIONS" -c -l test/tmp_check/postmaster.log
+$BINDIR/pg_ctl start -w -D $TMPDIR/data -o "$OPTIONS" -c -l $TMPDIR/postmaster.log
 
 $REGRESS_BASE/$TESTBINARY \
     --host $SOCKET \
