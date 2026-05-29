@@ -504,6 +504,7 @@ sub pgactive_detach_nodes {
     $upstream_node->safe_psql( $pgactive_test_dbname,
         "SELECT pgactive.pgactive_detach_nodes($nodelist)" );
 
+    sleep(5);
     # We can tell a detach has taken effect when the downstream's slot vanishes
     # on the upstream.
     for my $detach_node (@{$pgactive_detach_nodes}) {
