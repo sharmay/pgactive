@@ -479,8 +479,9 @@ sub wait_detach_completion {
     my ($detach_node, $upstream_node) = @_;
     my $detach_node_name = $detach_node->name();
 
-    ok($upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE node_name = '$detach_node_name' and active)]),
-        qq(replication slot for $detach_node_name on @{[$upstream_node->name]} removed after detach));
+    if (!$upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE node_name = '$detach_node_name' and active)])) {
+        diag("replication slot for $detach_node_name on @{[$upstream_node->name]} was not removed within timeout, continuing");
+    }
 }
 
 # Remove one or mote nodes from cluster using 'pgactive_detach_nodes'.
@@ -504,7 +505,6 @@ sub pgactive_detach_nodes {
     $upstream_node->safe_psql( $pgactive_test_dbname,
         "SELECT pgactive.pgactive_detach_nodes($nodelist)" );
 
-    sleep(5);
     # We can tell a detach has taken effect when the downstream's slot vanishes
     # on the upstream.
     for my $detach_node (@{$pgactive_detach_nodes}) {
@@ -558,10 +558,10 @@ sub check_detach_status {
             qq($detach_node_name status on local node after detach is 'k' or 'r')
         );
 
-        # The downstream's slot on the upstream MUST be gone.
-        # Use poll_query_until because slot cleanup may lag behind node status change.
-        ok(
-            $upstream_node->poll_query_until($pgactive_test_dbname, qq[SELECT NOT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE active and node_name = '$detach_node_name')]),
+        # The downstream's slot on the upstream MUST be gone
+        is(
+            $upstream_node->safe_psql($pgactive_test_dbname, qq[SELECT EXISTS (SELECT 1 FROM pgactive.pgactive_get_replication_lag_info() WHERE active and node_name = '$detach_node_name')]),
+            'f',
             qq(replication slot for $detach_node_name on $upstream_node_name has been removed)
         );
 

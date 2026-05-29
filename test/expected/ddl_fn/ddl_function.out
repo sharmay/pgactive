@@ -8,20 +8,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE  STRICT;
 $DDL$);
- pgactive_replicate_ddl_command
+ pgactive_replicate_ddl_command 
 --------------------------------
-
+ 
 (1 row)
 
 SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
- pgactive_wait_for_slots_confirmed_flush_lsn
+ pgactive_wait_for_slots_confirmed_flush_lsn 
 ---------------------------------------------
-
+ 
 (1 row)
 
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
@@ -29,27 +29,27 @@ SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \c regression
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
 
 \c postgres super
 SELECT pgactive.pgactive_replicate_ddl_command($DDL$ ALTER FUNCTION public.test_fn(varchar, integer) SECURITY DEFINER CALLED ON NULL INPUT VOLATILE ROWS 1 COST 1; $DDL$);
- pgactive_replicate_ddl_command
+ pgactive_replicate_ddl_command 
 --------------------------------
-
+ 
 (1 row)
 
 SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
- pgactive_wait_for_slots_confirmed_flush_lsn
+ pgactive_wait_for_slots_confirmed_flush_lsn 
 ---------------------------------------------
-
+ 
 (1 row)
 
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
@@ -57,7 +57,7 @@ SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \c regression
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
@@ -70,20 +70,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 $DDL$);
- pgactive_replicate_ddl_command
+ pgactive_replicate_ddl_command 
 --------------------------------
-
+ 
 (1 row)
 
 SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
- pgactive_wait_for_slots_confirmed_flush_lsn
+ pgactive_wait_for_slots_confirmed_flush_lsn 
 ---------------------------------------------
-
+ 
 (1 row)
 
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
@@ -91,7 +91,7 @@ SELECT pgactive.pgactive_wait_for_slots_confirmed_flush_lsn(NULL,NULL);
 \c regression
 \df test_fn
                                                      List of functions
- Schema |  Name   | Result data type |                              Argument data types                              | Type
+ Schema |  Name   | Result data type |                              Argument data types                              | Type 
 --------+---------+------------------+-------------------------------------------------------------------------------+------
  public | test_fn | SETOF record     | inpar character varying, INOUT inoutpar integer, OUT timestamp with time zone | func
 (1 row)
