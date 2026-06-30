@@ -65,11 +65,12 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
-/* Useful for development:
-#define VERBOSE_INSERT
-#define VERBOSE_DELETE
-#define VERBOSE_UPDATE
-*/
+/*
+ * Useful for development:
+ * #define VERBOSE_INSERT
+ * #define VERBOSE_DELETE
+ * #define VERBOSE_UPDATE
+ */
 
 /* Relation oid cache; initialized then left unchanged */
 Oid			QueuedDDLCommandsRelid = InvalidOid;
@@ -141,7 +142,7 @@ static void process_remote_delete(StringInfo s);
 
 static void get_local_tuple_origin(HeapTuple tuple,
 								   TimestampTz *commit_ts,
-								   RepOriginId *node_id);
+								   RepOriginId * node_id);
 static void abs_timestamp_difference(TimestampTz start_time,
 									 TimestampTz stop_time,
 									 long *secs, int *microsecs);
@@ -1384,7 +1385,7 @@ process_remote_delete(StringInfo s)
  * Get commit timestamp and origin of the tuple
  */
 static void
-get_local_tuple_origin(HeapTuple tuple, TimestampTz *commit_ts, RepOriginId *node_id)
+get_local_tuple_origin(HeapTuple tuple, TimestampTz *commit_ts, RepOriginId * node_id)
 {
 	TransactionId xmin;
 	RepOriginId node_id_raw;
@@ -2568,7 +2569,7 @@ log_tuple(const char *format, TupleDesc desc, HeapTuple tup)
  * since we'd have to reconnect to apply most kinds of change anyway.
  */
 static void
-pgactive_apply_reload_config()
+pgactive_apply_reload_config(void)
 {
 	pgactiveConnectionConfig *new_apply_config;
 

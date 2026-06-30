@@ -34,6 +34,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -435,7 +436,7 @@ pgactive_fetch_node_id_via_sysid(const pgactiveNodeId * const node)
  * no corresponding pgactive.pgactive_nodes row also get ignored.
  */
 List *
-pgactive_read_connection_configs()
+pgactive_read_connection_configs(void)
 {
 	HeapTuple	tuple;
 	StringInfoData query;

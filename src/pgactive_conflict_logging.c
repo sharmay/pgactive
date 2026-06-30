@@ -62,7 +62,7 @@ static MemoryContext conflict_log_context;
  * toggled at runtime.
  */
 void
-pgactive_conflict_logging_startup()
+pgactive_conflict_logging_startup(void)
 {
 	Oid			schema_oid;
 
@@ -292,7 +292,7 @@ tuple_to_stringinfo(StringInfo s, TupleDesc tupdesc, HeapTuple tuple)
 		val = (Datum) 0;
 		if (isnull)
 			outputstr = "(null)";
-		else if (typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval))
+		else if (typisvarlena && VARATT_IS_EXTERNAL_ONDISK((const void *) origval))
 			outputstr = "(unchanged-toast-datum)";
 		else if (typisvarlena)
 			val = PointerGetDatum(PG_DETOAST_DATUM(origval));

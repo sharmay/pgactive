@@ -46,17 +46,19 @@
 #include "utils/rel.h"
 
 /*
-* pgactive_commandfilter.c: a ProcessUtility_hook to prevent a cluster from running
-* commands that pgactive does not yet support.
-*/
+ * pgactive_commandfilter.c: a ProcessUtility_hook to prevent a cluster from running
+ * commands that pgactive does not yet support.
+ */
 
 static ProcessUtility_hook_type next_ProcessUtility_hook = NULL;
 
 static ClientAuthentication_hook_type next_ClientAuthentication_hook = NULL;
 
 /* GUCs */
-/* replaced by pgactive_skip_ddl_replication for now
-bool           pgactive_permit_unsafe_commands = false; */
+/*
+ * replaced by pgactive_skip_ddl_replication for now
+ * bool           pgactive_permit_unsafe_commands = false;
+ */
 
 #if PG_VERSION_NUM >= 120000
 static bool default_with_oids = false;
@@ -68,11 +70,11 @@ static int	pgactive_ddl_nestlevel = 0;
 bool		pgactive_in_extension = false;
 
 /*
-* Check the passed rangevar, locking it and looking it up in the cache
-* then determine if the relation requires logging to WAL. If it does, then
-* right now pgactive won't cope with it and we must reject the operation that
-* touches this relation.
-*/
+ * Check the passed rangevar, locking it and looking it up in the cache
+ * then determine if the relation requires logging to WAL. If it does, then
+ * right now pgactive won't cope with it and we must reject the operation that
+ * touches this relation.
+ */
 static void
 error_on_persistent_rv(RangeVar *rv,
 					   const char *cmdtag,
@@ -311,7 +313,7 @@ filter_AlterTableStmt(Node *parsetree,
 													   astmt->missing_ok);
 						}
 					}
-					/* FALLTHROUGH */
+					pg_fallthrough;
 				case AT_AddIndex:	/* produced by for example ALTER TABLE …
 									 * ADD CONSTRAINT … PRIMARY KEY */
 					{
@@ -335,7 +337,7 @@ filter_AlterTableStmt(Node *parsetree,
 						}
 
 					}
-					/* FALLTHROUGH */
+					pg_fallthrough;
 				case AT_DropColumn:
 				case AT_DropNotNull:
 				case AT_SetNotNull:
@@ -1081,7 +1083,11 @@ pgactive_commandfilter(PlannedStmt *pstmt,
 		case T_CheckPointStmt:
 		case T_ReindexStmt:
 		case T_VacuumStmt:
+#if PG_VERSION_NUM < 190000
 		case T_ClusterStmt:
+#else
+		case T_RepackStmt:
+#endif
 			goto done;
 
 			/*
@@ -1181,6 +1187,7 @@ pgactive_commandfilter(PlannedStmt *pstmt,
 				pgactive_commandfilter_dbname(((RenameStmt *) parsetree)->newname);
 				goto done;
 			}
+			pg_fallthrough;
 
 		default:
 			break;
@@ -1601,7 +1608,7 @@ done:
 		case T_DropStmt:
 			if (((DropStmt *) parsetree)->removeType != OBJECT_EXTENSION)
 				break;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case T_CreateExtensionStmt:
 		case T_AlterExtensionStmt:
 		case T_AlterExtensionContentsStmt:
