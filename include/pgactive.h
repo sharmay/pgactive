@@ -478,6 +478,7 @@ extern int	pgactive_init_node_parallel_jobs;
 extern int	pgactive_max_nodes;
 extern bool pgactive_permit_node_identifier_getter_function_creation;
 extern bool pgactive_debug_trace_connection_errors;
+extern bool pgactive_apply_as_table_owner;
 
 static const char *const pgactive_default_apply_connection_options =
 "connect_timeout=30 "

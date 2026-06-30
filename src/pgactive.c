@@ -126,6 +126,7 @@ int			pgactive_init_node_parallel_jobs;
 int			pgactive_max_nodes;
 bool		pgactive_permit_node_identifier_getter_function_creation;
 bool		pgactive_debug_trace_connection_errors;
+bool		pgactive_apply_as_table_owner;
 
 PG_MODULE_MAGIC;
 
@@ -1249,6 +1250,16 @@ _PG_init(void)
 							 false,
 							 PGC_SIGHUP,
 							 GUC_SUPERUSER_ONLY,
+							 NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("pgactive.apply_as_table_owner",
+							 "Apply DML changes as the table owner instead of superuser.",
+							 "When enabled, the apply worker switches to the table owner "
+							 "before executing INSERT, UPDATE, or DELETE operations.",
+							 &pgactive_apply_as_table_owner,
+							 false,
+							 PGC_POSTMASTER,
+							 0,
 							 NULL, NULL, NULL);
 
 	EmitWarningsOnPlaceholders("pgactive");
