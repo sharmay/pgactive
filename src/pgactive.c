@@ -1257,7 +1257,7 @@ _PG_init(void)
 							 "When enabled, the apply worker switches to the table owner "
 							 "before executing INSERT, UPDATE, or DELETE operations.",
 							 &pgactive_apply_as_table_owner,
-							 false,
+							 true,
 							 PGC_POSTMASTER,
 							 0,
 							 NULL, NULL, NULL);

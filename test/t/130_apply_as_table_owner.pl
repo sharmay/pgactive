@@ -2,8 +2,8 @@
 #
 # Test pgactive.apply_as_table_owner GUC.
 #
-# Verifies that when enabled, the apply worker executes DML (INSERT, UPDATE,
-# DELETE) as the table owner rather than as superuser.
+# Verifies that when enabled (now the default), the apply worker executes DML
+# (INSERT, UPDATE, DELETE) as the table owner rather than as superuser.
 #
 # The C code emits elog(DEBUG1, "pgactive apply <OP> as user <name> on <table>")
 # when the GUC is on. We set pgactive.log_min_messages = debug1 on the receiving
@@ -33,7 +33,7 @@ sub log_content_from {
 }
 
 ##
-## Part A: GUC off (default) - no "apply as user" log messages
+## Part A: GUC on (default) - apply should run as table owner
 ##
 
 my $nodes = make_pgactive_group(2, 'node_');
@@ -65,118 +65,55 @@ is($node_1->safe_psql($pgactive_test_dbname,
 	q[SELECT tableowner FROM pg_tables WHERE tablename = 'owner_test';]),
 	'table_owner', 'table ownership replicated to node_1');
 
-# Confirm the GUC defaults to off
+# Confirm the GUC defaults to on
 is($node_1->safe_psql($pgactive_test_dbname,
 	q[SHOW pgactive.apply_as_table_owner;]),
-	'off', 'GUC defaults to off');
+	'on', 'GUC defaults to on');
 
 my $logstart_1 = get_log_size($node_1);
 
-# Test INSERT with GUC off
+# Test INSERT replication as table owner
 $node_0->safe_psql($pgactive_test_dbname,
 	q[INSERT INTO owner_test(id, data) VALUES (1, 'test1');]);
 wait_for_apply($node_0, $node_1);
 
 is($node_1->safe_psql($pgactive_test_dbname,
 	q[SELECT data FROM owner_test WHERE id = 1;]),
-	'test1', 'insert replicated with GUC off');
+	'test1', 'insert replicated with GUC on (default)');
 
-# Test UPDATE with GUC off
+ok(find_in_log($node_1, qr/pgactive apply INSERT as user table_owner on owner_test/, $logstart_1),
+	'INSERT applied as table_owner (default)');
+
+# Test UPDATE replication as table owner
+$logstart_1 = get_log_size($node_1);
+
 $node_0->safe_psql($pgactive_test_dbname,
 	q[UPDATE owner_test SET data = 'updated1' WHERE id = 1;]);
 wait_for_apply($node_0, $node_1);
 
 is($node_1->safe_psql($pgactive_test_dbname,
 	q[SELECT data FROM owner_test WHERE id = 1;]),
-	'updated1', 'update replicated with GUC off');
+	'updated1', 'update replicated with GUC on (default)');
 
-# Test DELETE with GUC off
+ok(find_in_log($node_1, qr/pgactive apply UPDATE as user table_owner on owner_test/, $logstart_1),
+	'UPDATE applied as table_owner (default)');
+
+# Test DELETE replication as table owner
+$logstart_1 = get_log_size($node_1);
+
 $node_0->safe_psql($pgactive_test_dbname,
 	q[DELETE FROM owner_test WHERE id = 1;]);
 wait_for_apply($node_0, $node_1);
 
 is($node_1->safe_psql($pgactive_test_dbname,
 	q[SELECT count(*) FROM owner_test WHERE id = 1;]),
-	'0', 'delete replicated with GUC off');
-
-# No "pgactive apply ... as user" log messages should appear (apply already done)
-my $log_content = log_content_from($node_1, $logstart_1);
-ok($log_content !~ /pgactive apply INSERT as user .* on owner_test/,
-	'with GUC off, no apply-as-user log for INSERT');
-ok($log_content !~ /pgactive apply UPDATE as user .* on owner_test/,
-	'with GUC off, no apply-as-user log for UPDATE');
-ok($log_content !~ /pgactive apply DELETE as user .* on owner_test/,
-	'with GUC off, no apply-as-user log for DELETE');
-
-##
-## Part B: Enable GUC via restart - apply should run as table owner
-##
-
-$node_0->append_conf('postgresql.conf', "pgactive.apply_as_table_owner = on\n");
-$node_1->append_conf('postgresql.conf', "pgactive.apply_as_table_owner = on\n");
-$node_1->append_conf('postgresql.conf', "pgactive.log_min_messages = debug1\n");
-
-foreach my $node ($node_0, $node_1)
-{
-	$node->restart;
-}
-
-# Wait for pgactive to be ready after restart
-foreach my $node ($node_0, $node_1)
-{
-	$node->safe_psql($pgactive_test_dbname,
-		qq[SELECT pgactive.pgactive_wait_for_node_ready($PostgreSQL::Test::Utils::timeout_default)]);
-}
-
-# Confirm the GUC is now on
-is($node_1->safe_psql($pgactive_test_dbname,
-	q[SHOW pgactive.apply_as_table_owner;]),
-	'on', 'GUC is on after restart');
-
-$logstart_1 = get_log_size($node_1);
-
-# Test INSERT replication as table owner
-$node_0->safe_psql($pgactive_test_dbname,
-	q[INSERT INTO owner_test(id, data) VALUES (2, 'test2');]);
-wait_for_apply($node_0, $node_1);
-
-is($node_1->safe_psql($pgactive_test_dbname,
-	q[SELECT data FROM owner_test WHERE id = 2;]),
-	'test2', 'insert replicated with GUC on');
-
-ok(find_in_log($node_1, qr/pgactive apply INSERT as user table_owner on owner_test/, $logstart_1),
-	'INSERT applied as table_owner');
-
-# Test UPDATE replication as table owner
-$logstart_1 = get_log_size($node_1);
-
-$node_0->safe_psql($pgactive_test_dbname,
-	q[UPDATE owner_test SET data = 'updated' WHERE id = 2;]);
-wait_for_apply($node_0, $node_1);
-
-is($node_1->safe_psql($pgactive_test_dbname,
-	q[SELECT data FROM owner_test WHERE id = 2;]),
-	'updated', 'update replicated with GUC on');
-
-ok(find_in_log($node_1, qr/pgactive apply UPDATE as user table_owner on owner_test/, $logstart_1),
-	'UPDATE applied as table_owner');
-
-# Test DELETE replication as table owner
-$logstart_1 = get_log_size($node_1);
-
-$node_0->safe_psql($pgactive_test_dbname,
-	q[DELETE FROM owner_test WHERE id = 2;]);
-wait_for_apply($node_0, $node_1);
-
-is($node_1->safe_psql($pgactive_test_dbname,
-	q[SELECT count(*) FROM owner_test WHERE id = 2;]),
-	'0', 'delete replicated with GUC on');
+	'0', 'delete replicated with GUC on (default)');
 
 ok(find_in_log($node_1, qr/pgactive apply DELETE as user table_owner on owner_test/, $logstart_1),
-	'DELETE applied as table_owner');
+	'DELETE applied as table_owner (default)');
 
 ##
-## Part C: DDL replication OFF - verify apply_as_table_owner still works
+## Part B: DDL replication OFF - verify apply_as_table_owner still works
 ##
 
 # Turn off DDL replication on both nodes via restart
@@ -226,12 +163,13 @@ ok(find_in_log($node_1, qr/pgactive apply DELETE as user table_owner on owner_te
 	'DELETE applied as table_owner with DDL replication off');
 
 ##
-## Part D: Disable GUC via restart - apply reverts to superuser
+## Part C: Disable GUC via restart - apply reverts to superuser
 ##
 
 foreach my $node ($node_0, $node_1)
 {
 	$node->append_conf('postgresql.conf', "pgactive.apply_as_table_owner = off\n");
+	$node->append_conf('postgresql.conf', "pgactive.skip_ddl_replication = off\n");
 	$node->restart;
 }
 
@@ -241,6 +179,10 @@ foreach my $node ($node_0, $node_1)
 	$node->safe_psql($pgactive_test_dbname,
 		qq[SELECT pgactive.pgactive_wait_for_node_ready($PostgreSQL::Test::Utils::timeout_default)]);
 }
+
+is($node_1->safe_psql($pgactive_test_dbname,
+	q[SHOW pgactive.apply_as_table_owner;]),
+	'off', 'GUC is off after explicit disable');
 
 $logstart_1 = get_log_size($node_1);
 
@@ -272,7 +214,7 @@ is($node_1->safe_psql($pgactive_test_dbname,
 	'0', 'delete replicated after GUC disabled');
 
 # No apply-as-user messages (apply already completed, just read log)
-$log_content = log_content_from($node_1, $logstart_1);
+my $log_content = log_content_from($node_1, $logstart_1);
 ok($log_content !~ /pgactive apply INSERT as user .* on owner_test/,
 	'after GUC disabled, no apply-as-user log for INSERT');
 ok($log_content !~ /pgactive apply UPDATE as user .* on owner_test/,
@@ -281,18 +223,17 @@ ok($log_content !~ /pgactive apply DELETE as user .* on owner_test/,
 	'after GUC disabled, no apply-as-user log for DELETE');
 
 ##
-## Part E: Negative test - ownership divergence between nodes
+## Part D: Negative test - ownership divergence between nodes
 ##
 ## When table ownership differs between nodes, the apply worker should use
 ## the LOCAL table owner (from the receiving node), not the origin's owner.
 ## This tests that divergent ownership is handled correctly.
 ##
 
-# Re-enable GUC and DDL replication for this test
+# Re-enable GUC for this test
 foreach my $node ($node_0, $node_1)
 {
 	$node->append_conf('postgresql.conf', "pgactive.apply_as_table_owner = on\n");
-	$node->append_conf('postgresql.conf', "pgactive.skip_ddl_replication = off\n");
 	$node->restart;
 }
 

@@ -65,6 +65,30 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
+#if PG_VERSION_NUM >= 160000
+#include "utils/usercontext.h"
+#else
+typedef struct UserContext
+{
+	Oid			save_userid;
+	int			save_sec_context;
+} UserContext;
+
+static inline void
+SwitchToUntrustedUser(Oid userid, UserContext *context)
+{
+	GetUserIdAndSecContext(&context->save_userid, &context->save_sec_context);
+	SetUserIdAndSecContext(userid,
+						   context->save_sec_context | SECURITY_RESTRICTED_OPERATION);
+}
+
+static inline void
+RestoreUserContext(UserContext *context)
+{
+	SetUserIdAndSecContext(context->save_userid, context->save_sec_context);
+}
+#endif
+
 /*
  * Useful for development:
  * #define VERBOSE_INSERT
@@ -606,8 +630,7 @@ process_remote_insert(StringInfo s)
 	ItemPointerData conflicting_tid;
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
-	Oid			save_userid;
-	int			save_sec_context;
+	UserContext ucxt;
 
 	ItemPointerSetInvalid(&conflicting_tid);
 
@@ -627,9 +650,7 @@ process_remote_insert(StringInfo s)
 
 	if (pgactive_apply_as_table_owner)
 	{
-		GetUserIdAndSecContext(&save_userid, &save_sec_context);
-		SetUserIdAndSecContext(rel->rel->rd_rel->relowner,
-							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
 		elog(DEBUG1, "pgactive apply INSERT as user %s on %s",
 			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
 			 RelationGetRelationName(rel->rel));
@@ -855,7 +876,7 @@ process_remote_insert(StringInfo s)
 	PopActiveSnapshot();
 
 	if (pgactive_apply_as_table_owner)
-		SetUserIdAndSecContext(save_userid, save_sec_context);
+		RestoreUserContext(&ucxt);
 
 	ExecCloseIndices(relinfo);
 
@@ -948,8 +969,7 @@ process_remote_update(StringInfo s)
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
 	ResultRelInfo *relinfo = makeNode(ResultRelInfo);
-	Oid			save_userid;
-	int			save_sec_context;
+	UserContext ucxt;
 
 	xact_action_counter++;
 	memset(&cbarg, 0, sizeof(struct ActionErrCallbackArg));
@@ -965,9 +985,7 @@ process_remote_update(StringInfo s)
 
 	if (pgactive_apply_as_table_owner)
 	{
-		GetUserIdAndSecContext(&save_userid, &save_sec_context);
-		SetUserIdAndSecContext(rel->rel->rd_rel->relowner,
-							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
 		elog(DEBUG1, "pgactive apply UPDATE as user %s on %s",
 			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
 			 RelationGetRelationName(rel->rel));
@@ -1211,7 +1229,7 @@ process_remote_update(StringInfo s)
 	PopActiveSnapshot();
 
 	if (pgactive_apply_as_table_owner)
-		SetUserIdAndSecContext(save_userid, save_sec_context);
+		RestoreUserContext(&ucxt);
 
 	check_pgactive_wakeups(rel);
 
@@ -1243,8 +1261,7 @@ process_remote_delete(StringInfo s)
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
 	ResultRelInfo *relinfo = makeNode(ResultRelInfo);
-	Oid			save_userid;
-	int			save_sec_context;
+	UserContext ucxt;
 
 	Assert(pgactive_apply_worker != NULL);
 
@@ -1262,9 +1279,7 @@ process_remote_delete(StringInfo s)
 
 	if (pgactive_apply_as_table_owner)
 	{
-		GetUserIdAndSecContext(&save_userid, &save_sec_context);
-		SetUserIdAndSecContext(rel->rel->rd_rel->relowner,
-							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
 		elog(DEBUG1, "pgactive apply DELETE as user %s on %s",
 			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
 			 RelationGetRelationName(rel->rel));
@@ -1281,7 +1296,7 @@ process_remote_delete(StringInfo s)
 	{
 		elog(WARNING, "got delete without pkey");
 		if (pgactive_apply_as_table_owner)
-			SetUserIdAndSecContext(save_userid, save_sec_context);
+			RestoreUserContext(&ucxt);
 		pgactive_table_close(rel, NoLock);
 		return;
 	}
@@ -1412,7 +1427,7 @@ process_remote_delete(StringInfo s)
 	PopActiveSnapshot();
 
 	if (pgactive_apply_as_table_owner)
-		SetUserIdAndSecContext(save_userid, save_sec_context);
+		RestoreUserContext(&ucxt);
 
 	check_pgactive_wakeups(rel);
 
