@@ -2,7 +2,7 @@
 #
 # Test pgactive.apply_as_table_owner GUC.
 #
-# Verifies that when enabled (now the default), the apply worker executes DML
+# Verifies that when enabled (default), the apply worker executes DML
 # (INSERT, UPDATE, DELETE) as the table owner rather than as superuser.
 #
 # The C code emits elog(DEBUG1, "pgactive apply <OP> as user <name> on <table>")
