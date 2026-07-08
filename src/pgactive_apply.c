@@ -65,6 +65,30 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 
+#if PG_VERSION_NUM >= 160000
+#include "utils/usercontext.h"
+#else
+typedef struct UserContext
+{
+	Oid			save_userid;
+	int			save_sec_context;
+} UserContext;
+
+static inline void
+SwitchToUntrustedUser(Oid userid, UserContext *context)
+{
+	GetUserIdAndSecContext(&context->save_userid, &context->save_sec_context);
+	SetUserIdAndSecContext(userid,
+						   context->save_sec_context | SECURITY_RESTRICTED_OPERATION);
+}
+
+static inline void
+RestoreUserContext(UserContext *context)
+{
+	SetUserIdAndSecContext(context->save_userid, context->save_sec_context);
+}
+#endif
+
 /*
  * Useful for development:
  * #define VERBOSE_INSERT
@@ -606,6 +630,7 @@ process_remote_insert(StringInfo s)
 	ItemPointerData conflicting_tid;
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
+	UserContext ucxt;
 
 	ItemPointerSetInvalid(&conflicting_tid);
 
@@ -622,6 +647,14 @@ process_remote_insert(StringInfo s)
 	Assert(pgactive_apply_worker != NULL);
 
 	rel = read_rel(s, RowExclusiveLock, &cbarg);
+
+	if (pgactive_apply_as_table_owner)
+	{
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
+		elog(DEBUG1, "pgactive apply INSERT as user %s on %s",
+			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
+			 RelationGetRelationName(rel->rel));
+	}
 
 	emit_replay_info(&cbarg);
 
@@ -842,6 +875,9 @@ process_remote_insert(StringInfo s)
 
 	PopActiveSnapshot();
 
+	if (pgactive_apply_as_table_owner)
+		RestoreUserContext(&ucxt);
+
 	ExecCloseIndices(relinfo);
 
 	check_pgactive_wakeups(rel);
@@ -933,6 +969,7 @@ process_remote_update(StringInfo s)
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
 	ResultRelInfo *relinfo = makeNode(ResultRelInfo);
+	UserContext ucxt;
 
 	xact_action_counter++;
 	memset(&cbarg, 0, sizeof(struct ActionErrCallbackArg));
@@ -945,6 +982,14 @@ process_remote_update(StringInfo s)
 	pgactive_performing_work();
 
 	rel = read_rel(s, RowExclusiveLock, &cbarg);
+
+	if (pgactive_apply_as_table_owner)
+	{
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
+		elog(DEBUG1, "pgactive apply UPDATE as user %s on %s",
+			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
+			 RelationGetRelationName(rel->rel));
+	}
 
 	emit_replay_info(&cbarg);
 
@@ -1183,6 +1228,9 @@ process_remote_update(StringInfo s)
 
 	PopActiveSnapshot();
 
+	if (pgactive_apply_as_table_owner)
+		RestoreUserContext(&ucxt);
+
 	check_pgactive_wakeups(rel);
 
 	/* release locks upon commit */
@@ -1213,6 +1261,7 @@ process_remote_delete(StringInfo s)
 	ErrorContextCallback errcallback;
 	struct ActionErrCallbackArg cbarg;
 	ResultRelInfo *relinfo = makeNode(ResultRelInfo);
+	UserContext ucxt;
 
 	Assert(pgactive_apply_worker != NULL);
 
@@ -1228,6 +1277,14 @@ process_remote_delete(StringInfo s)
 
 	rel = read_rel(s, RowExclusiveLock, &cbarg);
 
+	if (pgactive_apply_as_table_owner)
+	{
+		SwitchToUntrustedUser(rel->rel->rd_rel->relowner, &ucxt);
+		elog(DEBUG1, "pgactive apply DELETE as user %s on %s",
+			 GetUserNameFromId(rel->rel->rd_rel->relowner, false),
+			 RelationGetRelationName(rel->rel));
+	}
+
 	emit_replay_info(&cbarg);
 
 	action = pq_getmsgbyte(s);
@@ -1238,6 +1295,8 @@ process_remote_delete(StringInfo s)
 	if (action == 'E')
 	{
 		elog(WARNING, "got delete without pkey");
+		if (pgactive_apply_as_table_owner)
+			RestoreUserContext(&ucxt);
 		pgactive_table_close(rel, NoLock);
 		return;
 	}
@@ -1366,6 +1425,9 @@ process_remote_delete(StringInfo s)
 	}
 
 	PopActiveSnapshot();
+
+	if (pgactive_apply_as_table_owner)
+		RestoreUserContext(&ucxt);
 
 	check_pgactive_wakeups(rel);
 
