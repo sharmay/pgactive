@@ -306,6 +306,9 @@ pgactive_get_remote_dboid(const char *conninfo_db)
 
 	elog(DEBUG3, "fetching database oid via standard connection");
 
+	/* Final security check on the connection options. */
+	pgactive_check_proxy_conninfo(conninfo_db);
+
 	dbConn = PQconnectdb(conninfo_db);
 	if (PQstatus(dbConn) != CONNECTION_OK)
 	{
@@ -385,6 +388,12 @@ pgactive_connect(const char *conninfo,
 
 	appendStringInfo(&conninfo_repl, "%s replication=database",
 					 conninfo_nrepl.data);
+
+	/*
+	 * Final security check on the connection options.  conninfo_repl sets
+	 * every option that conninfo_nrepl sets, so this covers both connections.
+	 */
+	pgactive_check_proxy_conninfo(conninfo_repl.data);
 
 	streamConn = PQconnectdb(conninfo_repl.data);
 	if (PQstatus(streamConn) != CONNECTION_OK)

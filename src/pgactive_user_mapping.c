@@ -24,6 +24,7 @@
 #include "executor/spi.h"
 #include "foreign/foreign.h"
 #include "libpq-fe.h"
+#include "libpq/libpq-be-fe-helpers.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "utils/acl.h"
@@ -338,6 +339,21 @@ get_connect_string(const char *usermappinginfo)
 		CommitTransactionCommand();
 
 	return buf.data;
+}
+
+/*
+ * Final security check on a connection string that pgactive is about to
+ * connect with, or to pass to pgactive_dump or pg_restore.  ERROR if it sets
+ * an option that the server doesn't allow; see libpqsrv_check_proxy_conninfo().
+ *
+ * This is the only file that includes libpq-be-fe-helpers.h, because from
+ * PostgreSQL 19 on that header redefines PGresult and the PQ* result
+ * functions for the whole file.
+ */
+void
+pgactive_check_proxy_conninfo(const char *conninfo)
+{
+	libpqsrv_check_proxy_conninfo(conninfo);
 }
 
 /*

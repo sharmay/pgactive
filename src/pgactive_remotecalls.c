@@ -84,6 +84,9 @@ pgactive_connect_nonrepl(const char *connstring, const char *appname,
 	else
 		appendStringInfo(&dsn, "application_name='%s'", appname);
 
+	/* Final security check on the connection options. */
+	pgactive_check_proxy_conninfo(dsn.data);
+
 	/*
 	 * Test to see if there's an entry in the remote's pgactive.pgactive_nodes
 	 * for our system identifier. If there is, that'll tell us what stage of

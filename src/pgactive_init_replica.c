@@ -434,6 +434,13 @@ pgactive_init_exec_dump_restore(pgactiveNodeInfo * node,
 					 (l_servername == NULL ? node->local_dsn : l_servername),
 					 myid.sysid);
 
+	/*
+	 * Final security check on the connection options that pgactive_dump and
+	 * pg_restore will connect with.
+	 */
+	pgactive_check_proxy_conninfo(origin_dsn->data);
+	pgactive_check_proxy_conninfo(local_dsn->data);
+
 	snprintf(tmpdir, sizeof(tmpdir), "%s/%s-" UINT64_FORMAT "-%s.%d",
 			 pgactive_temp_dump_directory, TEMP_DUMP_DIR_PREFIX,
 			 GetSystemIdentifier(), snapshot, getpid());

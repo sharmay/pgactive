@@ -119,4 +119,5 @@ extern int	pgactive_find_other_exec(const char *argv0, const char *target,
 extern uint64 GenerateNodeIdentifier(void);
 
 extern char *get_connect_string(const char *usermappinginfo);
+extern void pgactive_check_proxy_conninfo(const char *conninfo);
 #endif							/* pgactive_INTERNAL_H */
